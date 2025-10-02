@@ -1,0 +1,1 @@
+for the tech round only one time one user can give the test and once hit the end session button then do all storing and all the things and close the window tab from brower as we implemented all this for the quiz round
