@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { getLocalLLM } = require("../services/localLLM");
 require("dotenv").config();
 
 const addOnPrompt = `
@@ -8,16 +9,30 @@ Generate an aptitude quiz with 10 questions. Each question should have:
 - 4 options labeled A, B, C, and D.
 - The correct answer.
 - Questions on {{quizType}}
-Return the quiz as an array of objects in JSON format, where each object contains:
+
+Return ONLY a valid JSON array of objects. Each object must contain:
 {
-  "id": "a very unique id (not serializable)",
+  "id": "unique_id_string",
   "que": "Question text",
   "a": "option A",
   "b": "option B",
   "c": "option C",
   "d": "option D",
-  "ans": "correct answer option (like a,b,c,d)"
+  "ans": "correct answer option (a, b, c, or d)"
 }
+
+Example output format:
+[
+  {
+    "id": "q1_logical_reasoning",
+    "que": "What comes next in the sequence: 2, 4, 8, 16, ?",
+    "a": "24",
+    "b": "32",
+    "c": "28",
+    "d": "20",
+    "ans": "b"
+  }
+]
 `;
 
 router.get("/generateQuiz", async (req, res) => {
@@ -27,21 +42,19 @@ router.get("/generateQuiz", async (req, res) => {
       "aptitude including logical reasoning, problem solving, and critical thinking.";
   }
 
-  const { GoogleGenerativeAI } = require("@google/generative-ai");
-  const genAI = new GoogleGenerativeAI(
-    process.env.GEN_AI_API_KEY2 || process.env.GEN_AI_API_KEY6
-  );
-
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const llm = getLocalLLM();
     const typeAddOnPrompt = addOnPrompt.replace("{{quizType}}", quizType);
-    const result = await model.generateContent(typeAddOnPrompt);
-    const rawResponse = await result.response.text(); // Get the raw response text
 
-    const cleanedResponse = rawResponse.slice(7, -4).trim();
-    const responseText = JSON.parse(cleanedResponse);
+    const responseText = await llm.generateJSON(typeAddOnPrompt, {
+      temperature: 0.5,
+      max_tokens: 3000,
+    });
 
-    res.status(200).json(responseText); // Send the parsed JSON to the frontend
+    // Ensure we have an array
+    const questions = Array.isArray(responseText) ? responseText : [responseText];
+
+    res.status(200).json(questions);
   } catch (error) {
     console.error("Error generating quiz:", error);
     res.status(500).send("Failed to generate quiz");

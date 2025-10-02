@@ -1,8 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const { getLocalLLM } = require("../services/localLLM");
 require("dotenv").config();
-
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 router.post("/checkTechSolution", async (req, res) => {
   const {
@@ -20,10 +19,6 @@ router.post("/checkTechSolution", async (req, res) => {
       .status(400)
       .json({ success: false, error: "Missing required fields" });
   }
-
-  const genAI = new GoogleGenerativeAI(
-    process.env.GEN_AI_API_KEY1 || process.env.GEN_AI_API_KEY5
-  );
 
   const addOnPrompt = `
 You are an expert DSA interviewer and code reviewer. Analyze a candidate's solution.
@@ -69,30 +64,17 @@ STRICT REQUIREMENTS:
 `;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(addOnPrompt);
+    const llm = getLocalLLM();
+    const parsed = await llm.generateJSON(addOnPrompt, {
+      temperature: 0.3,
+      max_tokens: 2048,
+    });
 
-    // Get the raw response text
-    let rawResponse = await result.response.text();
-
-    // Attempt robust JSON extraction: take substring between first '{' and last '}'
-    const firstBrace = rawResponse.indexOf("{");
-    const lastBrace = rawResponse.lastIndexOf("}");
-    if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    // Validate response structure
+    if (!parsed || typeof parsed !== 'object') {
       return res
         .status(500)
-        .json({ success: false, error: "No JSON found in model response" });
-    }
-    const jsonStr = rawResponse.substring(firstBrace, lastBrace + 1);
-
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonStr);
-    } catch (parseError) {
-      console.error("Error parsing response:", parseError, rawResponse);
-      return res
-        .status(500)
-        .json({ success: false, error: "Invalid JSON response" });
+        .json({ success: false, error: "Invalid response from model" });
     }
 
     // Backwards compatibility: expose evaluation summary via cleanedResponse

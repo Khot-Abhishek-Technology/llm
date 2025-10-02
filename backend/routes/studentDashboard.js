@@ -1,13 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const Student = require("../models/studentModel");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { getLocalLLM } = require("../services/localLLM");
 const axios = require("axios");
 require("dotenv").config();
-
-const genAI = new GoogleGenerativeAI(
-  process.env.GEN_AI_API_KEY4 || process.env.GEN_AI_API_KEY8
-);
 
 // Get student dashboard data
 router.get("/getStudentDashboard/:studentId", async (req, res) => {
@@ -195,23 +191,17 @@ Return ONLY a valid JSON array with this exact structure:
 Make sure the JSON is valid and properly formatted.
 `;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(prompt);
-    const response = await result.response.text();
+    const llm = getLocalLLM();
+    const questions = await llm.generateJSON(prompt, {
+      temperature: 0.6,
+      max_tokens: 3000,
+    });
 
-    // Clean and parse the response
-    let cleanedResponse = response.trim();
-    if (cleanedResponse.startsWith("```json")) {
-      cleanedResponse = cleanedResponse.slice(7);
-    }
-    if (cleanedResponse.endsWith("```")) {
-      cleanedResponse = cleanedResponse.slice(0, -3);
-    }
-
-    const questions = JSON.parse(cleanedResponse);
+    // Ensure we have an array
+    const questionsArray = Array.isArray(questions) ? questions : [questions];
 
     // Add questions to student's suggested questions
-    const suggestedQuestions = questions.map((q) => ({
+    const suggestedQuestions = questionsArray.map((q) => ({
       questionId:
         new Date().getTime().toString() +
         Math.random().toString(36).substr(2, 9),
@@ -230,7 +220,7 @@ Make sure the JSON is valid and properly formatted.
 
     res.json({
       success: true,
-      message: `Generated ${questions.length} personalized questions`,
+      message: `Generated ${questionsArray.length} personalized questions`,
       questions: suggestedQuestions,
     });
   } catch (error) {
